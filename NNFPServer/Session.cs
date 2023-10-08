@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net.Sockets;
 using System.Text;
 
@@ -106,10 +107,30 @@ public class Session : IDisposable
 
     private async Task ReadExactBytes(byte[] buffer, CancellationToken cancellationToken)
     {
+        int readFails = 0;
+        Stopwatch sw = new Stopwatch();
+
         int read = 0;
         while (read < buffer.Length)
         {
-            read += await _stream.ReadAsync(buffer.AsMemory(read, buffer.Length - read), cancellationToken);
+            sw.Reset();
+            sw.Start();
+            int readNow = await _stream.ReadAsync(buffer.AsMemory(read, buffer.Length - read), cancellationToken);
+            sw.Stop();
+            read += readNow;
+            if (readNow == 0)
+            {
+                if (!_socket.Connected)
+                    throw new IOException("Disconnected");
+                if (sw.ElapsedMilliseconds < 1000)
+                {
+                    readFails++;
+                    if (readFails > 100)
+                    {
+                        throw new IOException("Socket is dead");
+                    }
+                }
+            }
         }
     }
 
