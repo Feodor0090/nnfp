@@ -3,7 +3,7 @@ using System.Text;
 
 namespace NNFPServer;
 
-public class Session
+public class Session : IDisposable
 {
     private readonly TcpClient _socket;
     private readonly CredentialsManager _manager;
@@ -14,6 +14,13 @@ public class Session
     private byte[]? expectedCheck;
 
     private int sendTransmissionCount = 0;
+
+    public void Dispose()
+    {
+        _socket.Client.Shutdown(SocketShutdown.Both);
+        _stream.Dispose();
+        _socket.Dispose();
+    }
 
     public Session(TcpClient socket, CredentialsManager manager)
     {
