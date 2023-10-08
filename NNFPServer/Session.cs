@@ -13,6 +13,8 @@ public class Session
     private bool authentificated;
     private byte[]? expectedCheck;
 
+    private int sendTransmissionCount = 0;
+
     public Session(TcpClient socket, CredentialsManager manager)
     {
         _socket = socket;
@@ -188,12 +190,17 @@ public class Session
 
         await using var stream = File.Open(realPath, FileMode.Open, FileAccess.Read);
 
+        sendTransmissionCount++;
+        var transmId = sendTransmissionCount;
         byte[] accept = new byte[12];
         BitConverter.TryWriteBytes(accept, stream.Length);
+        BitConverter.TryWriteBytes(new Span<byte>(accept, 8, 4), transmId);
+
 
         await Send(OutputFrameType.ServerToClientAccept, accept, cancellationToken);
 
         byte[] buf = new byte[1024 * 512];
+        BitConverter.TryWriteBytes(buf, transmId);
         while (true)
         {
             //first 4 bytes are id
