@@ -43,6 +43,10 @@ public class Session : IDisposable
             await ReadExactBytes(data, cancellationToken);
             switch (type)
             {
+                case InputFrameType.Shutdown:
+                {
+                    return;
+                }
                 case InputFrameType.Login:
                 {
                     string un = Encoding.UTF8.GetString(data);
@@ -224,6 +228,8 @@ public class Session : IDisposable
 
     private enum InputFrameType : short
     {
+        Shutdown = 0,
+
         // connection start
         Login = 1,
         Auth = 2,
