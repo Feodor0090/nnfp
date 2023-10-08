@@ -73,7 +73,15 @@ while (true)
     Console.Write("Имя файла/папки (.. для 1 уровня вверх): ");
     var nextName = Console.ReadLine();
     if (nextName == null)
+    {
+        await Send(OutputFrameType.Shutdown, Array.Empty<byte>());
+        client.Client.Shutdown(SocketShutdown.Both);
+        Thread.Sleep(50);
+        _stream.Close();
+        client.Close();
         return;
+    }
+
     if (nextName.Equals(".."))
     {
         if (path.Count > 0)
@@ -176,6 +184,8 @@ async Task ReadExactBytes(byte[] buffer)
 
 enum OutputFrameType : short
 {
+    Shutdown = 0,
+
     // connection start
     Login = 1,
     Auth = 2,
