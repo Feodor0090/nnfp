@@ -11,7 +11,7 @@ public class CredentialsManager
 
     public string GetHomeFolderFor(string username) => "/home/ansel/говно";
 
-    public (byte[] plain, byte[] encr) GetEncryptionCheckBlob(string username)
+    public (byte[] plain, byte[] encrypted) GetEncryptionCheckBlob(string username)
     {
         //TODO
         return (Array.Empty<byte>(), Array.Empty<byte>());

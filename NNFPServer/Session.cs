@@ -10,11 +10,11 @@ public class Session : IDisposable
     private readonly CredentialsManager _manager;
     private readonly NetworkStream _stream;
 
-    private string? userName;
-    private bool authentificated;
-    private byte[]? expectedCheck;
+    private string? _userName;
+    private bool _authentificated;
+    private byte[]? _expectedCheck;
 
-    private int sendTransmissionCount = 0;
+    private int _sendTransmissionCount;
 
     public void Dispose()
     {
@@ -39,9 +39,14 @@ public class Session : IDisposable
             // receiving size of next frame
             await ReadExactBytes(frameHeader, cancellationToken);
             int length = BitConverter.ToInt32(frameHeader, 0);
+
+            // receiving type of next frame
             InputFrameType type = (InputFrameType)BitConverter.ToInt16(frameHeader, 4);
+
+            // receiving data
             byte[] data = new byte[length];
             await ReadExactBytes(data, cancellationToken);
+
             switch (type)
             {
                 case InputFrameType.Shutdown:
@@ -51,13 +56,13 @@ public class Session : IDisposable
                 case InputFrameType.Login:
                 {
                     string un = Encoding.UTF8.GetString(data);
-                    authentificated = false;
+                    _authentificated = false;
                     if (_manager.IsValidUsername(un))
                     {
                         var check = _manager.GetEncryptionCheckBlob(un);
                         await Send(OutputFrameType.AuthCheckData, check.plain, cancellationToken);
-                        expectedCheck = check.encr;
-                        userName = un;
+                        _expectedCheck = check.encrypted;
+                        _userName = un;
                     }
                     else
                     {
@@ -69,19 +74,19 @@ public class Session : IDisposable
 
                 case InputFrameType.Auth:
                 {
-                    if (expectedCheck == null || userName == null)
+                    if (_expectedCheck == null || _userName == null)
                     {
                         await SendAuthFailure(cancellationToken);
                     }
-                    else if (expectedCheck.SequenceEqual(data))
+                    else if (_expectedCheck.SequenceEqual(data))
                     {
-                        authentificated = true;
-                        expectedCheck = null;
+                        _authentificated = true;
+                        _expectedCheck = null;
                         await SendDirectoryContents("/", cancellationToken);
                     }
                     else
                     {
-                        authentificated = false;
+                        _authentificated = false;
                         await SendAuthFailure(cancellationToken);
                     }
 
@@ -159,7 +164,7 @@ public class Session : IDisposable
 
     private Task SendDirectoryContents(string path, CancellationToken cancellationToken)
     {
-        if (userName == null || !authentificated)
+        if (_userName == null || !_authentificated)
             return SendAuthFailure(cancellationToken);
 
         if (!path.StartsWith('/') || !path.EndsWith('/'))
@@ -168,7 +173,7 @@ public class Session : IDisposable
         if (path.Split('/', StringSplitOptions.RemoveEmptyEntries).Any(x => x.Equals("..") || x.Equals("~")))
             return SendAccessFailure(cancellationToken);
 
-        var realPath = _manager.GetHomeFolderFor(userName) + path;
+        var realPath = _manager.GetHomeFolderFor(_userName) + path;
         string[] list;
         try
         {
@@ -193,7 +198,7 @@ public class Session : IDisposable
 
     private async Task SendFile(string path, CancellationToken cancellationToken)
     {
-        if (userName == null || !authentificated)
+        if (_userName == null || !_authentificated)
         {
             await SendAuthFailure(cancellationToken);
             return;
@@ -211,7 +216,7 @@ public class Session : IDisposable
             return;
         }
 
-        var realPath = _manager.GetHomeFolderFor(userName) + path;
+        var realPath = _manager.GetHomeFolderFor(_userName) + path;
 
         if (!File.Exists(realPath))
         {
@@ -222,8 +227,8 @@ public class Session : IDisposable
 
         await using var stream = File.Open(realPath, FileMode.Open, FileAccess.Read);
 
-        sendTransmissionCount++;
-        var transmId = sendTransmissionCount;
+        _sendTransmissionCount++;
+        var transmId = _sendTransmissionCount;
         byte[] accept = new byte[12];
         BitConverter.TryWriteBytes(accept, stream.Length);
         BitConverter.TryWriteBytes(new Span<byte>(accept, 8, 4), transmId);
