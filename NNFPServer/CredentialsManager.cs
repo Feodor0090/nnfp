@@ -1,3 +1,6 @@
+using System.Security.Cryptography;
+using System.Text;
+
 namespace NNFPServer;
 
 public class CredentialsManager
@@ -32,14 +35,13 @@ public class CredentialsManager
 
     public (byte[] plain, byte[] encrypted) GetEncryptionCheckBlob(string username)
     {
-        //TODO
-        return (Array.Empty<byte>(), Array.Empty<byte>());
-    }
+        var plain = RandomNumberGenerator.GetBytes(128);
 
-    public byte[] Encrypt(byte[] data)
-    {
-        //TODO
-        return data;
+        var user = _users.First(x => x.Username == username);
+        var password = Encoding.UTF8.GetBytes(user.Password);
+
+        var code = MD5.HashData(plain.Concat(password).ToArray());
+        return (plain, code);
     }
 
     private class User
