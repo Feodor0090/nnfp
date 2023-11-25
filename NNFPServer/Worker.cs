@@ -14,6 +14,7 @@ public class Worker : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        var manager = new CredentialsManager();
         IPEndPoint ipPoint = new IPEndPoint(IPAddress.Any, 2920);
         TcpListener socket = new TcpListener(ipPoint);
         try
@@ -24,7 +25,7 @@ public class Worker : BackgroundService
             {
                 var accepted = await socket.AcceptTcpClientAsync(stoppingToken);
                 _logger.Log(LogLevel.Information, "Session with {@Client} started", accepted.Client.RemoteEndPoint);
-                ProcessConnection(accepted, stoppingToken);
+                ProcessConnection(accepted, manager, stoppingToken);
             }
         }
         finally
@@ -34,9 +35,10 @@ public class Worker : BackgroundService
         }
     }
 
-    private async void ProcessConnection(TcpClient client, CancellationToken cancellationToken)
+    private async void ProcessConnection(TcpClient client, CredentialsManager creds,
+        CancellationToken cancellationToken)
     {
-        var session = new Session(client, new CredentialsManager());
+        var session = new Session(client, creds);
         try
         {
             await session.RunAsync(cancellationToken);
