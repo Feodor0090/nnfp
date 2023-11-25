@@ -208,7 +208,8 @@ public class Session : IDisposable
         string[] list;
         try
         {
-            list = Directory.GetDirectories(realPath).Select(x => $"{x}/").Concat(Directory.GetFiles(realPath))
+            list = Directory.GetDirectories(realPath).Select(x => $"{x.Substring(realPath.Length)}/")
+                .Concat(Directory.GetFiles(realPath).Select(x => x.Substring(realPath.Length)))
                 .ToArray();
         }
         catch
