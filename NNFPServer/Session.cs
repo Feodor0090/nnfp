@@ -16,8 +16,14 @@ public class Session : IDisposable
 
     private int _sendTransmissionCount;
 
+    private int _receiveTransmissionCount;
+    private readonly Dictionary<int, FileStream> _activeReceiveTransmissions = new();
+
     public void Dispose()
     {
+        foreach (var value in _activeReceiveTransmissions.Values)
+            value.Dispose();
+        _activeReceiveTransmissions.Clear();
         _socket.Client.Shutdown(SocketShutdown.Both);
         _stream.Dispose();
         _socket.Dispose();
@@ -51,6 +57,7 @@ public class Session : IDisposable
             {
                 case InputFrameType.Shutdown:
                 {
+                    // disposal will happen in Worker loop
                     return;
                 }
                 case InputFrameType.Login:
@@ -104,6 +111,30 @@ public class Session : IDisposable
                 {
                     var path = Encoding.UTF8.GetString(data);
                     await SendFile(path, cancellationToken);
+                    break;
+                }
+
+                case InputFrameType.ClientToServerInit:
+                {
+                    var path = Encoding.UTF8.GetString(data);
+                    await InitFileReceive(path, cancellationToken);
+                    break;
+                }
+
+                case InputFrameType.FilePart:
+                {
+                    var trId = BitConverter.ToInt32(data, 0);
+                    var stream = _activeReceiveTransmissions[trId];
+                    await stream.WriteAsync(data.AsMemory(4), cancellationToken);
+                    break;
+                }
+
+                case InputFrameType.Eof:
+                {
+                    var trId = BitConverter.ToInt32(data);
+                    var stream = _activeReceiveTransmissions[trId];
+                    await stream.DisposeAsync();
+                    _activeReceiveTransmissions.Remove(trId);
                     break;
                 }
             }
@@ -196,27 +227,30 @@ public class Session : IDisposable
         return Send(OutputFrameType.DirectoryContents, data.ToArray(), cancellationToken);
     }
 
+    private async Task InitFileReceive(string path, CancellationToken cancellationToken)
+    {
+        var realPath = await CheckFilePath(path, cancellationToken);
+        if (realPath == null) return;
+
+        if (File.Exists(realPath))
+        {
+            await Send(OutputFrameType.AcceptFailure, cancellationToken);
+            return;
+        }
+
+        var trId = _receiveTransmissionCount;
+        _receiveTransmissionCount++;
+
+        var stream = File.Create(realPath);
+        _activeReceiveTransmissions[trId] = stream;
+
+        await Send(OutputFrameType.ClientToServerAccept, BitConverter.GetBytes(trId), cancellationToken);
+    }
+
     private async Task SendFile(string path, CancellationToken cancellationToken)
     {
-        if (_userName == null || !_authentificated)
-        {
-            await SendAuthFailure(cancellationToken);
-            return;
-        }
-
-        if (!path.StartsWith('/') || path.EndsWith('/'))
-        {
-            await SendAccessFailure(cancellationToken);
-            return;
-        }
-
-        if (path.Split('/', StringSplitOptions.RemoveEmptyEntries).Any(x => x.Equals("..") || x.Equals("~")))
-        {
-            await SendAccessFailure(cancellationToken);
-            return;
-        }
-
-        var realPath = _manager.GetHomeFolderFor(_userName) + path;
+        var realPath = await CheckFilePath(path, cancellationToken);
+        if (realPath == null) return;
 
         if (!File.Exists(realPath))
         {
@@ -228,16 +262,16 @@ public class Session : IDisposable
         await using var stream = File.Open(realPath, FileMode.Open, FileAccess.Read);
 
         _sendTransmissionCount++;
-        var transmId = _sendTransmissionCount;
+        var trId = _sendTransmissionCount;
         byte[] accept = new byte[12];
         BitConverter.TryWriteBytes(accept, stream.Length);
-        BitConverter.TryWriteBytes(new Span<byte>(accept, 8, 4), transmId);
+        BitConverter.TryWriteBytes(new Span<byte>(accept, 8, 4), trId);
 
 
         await Send(OutputFrameType.ServerToClientAccept, accept, cancellationToken);
 
         byte[] buf = new byte[1024 * 512];
-        BitConverter.TryWriteBytes(buf, transmId);
+        BitConverter.TryWriteBytes(buf, trId);
         while (true)
         {
             //first 4 bytes are id
@@ -250,6 +284,30 @@ public class Session : IDisposable
 
             await Send(OutputFrameType.FilePart, buf.AsMemory(0, r + 4), cancellationToken);
         }
+    }
+
+    private async Task<string?> CheckFilePath(string path, CancellationToken cancellationToken)
+    {
+        if (_userName == null || !_authentificated)
+        {
+            await SendAuthFailure(cancellationToken);
+            return null;
+        }
+
+        if (!path.StartsWith('/') || path.EndsWith('/'))
+        {
+            await SendAccessFailure(cancellationToken);
+            return null;
+        }
+
+        if (path.Split('/', StringSplitOptions.RemoveEmptyEntries).Any(x => x.Equals("..") || x.Equals("~")))
+        {
+            await SendAccessFailure(cancellationToken);
+            return null;
+        }
+
+        var realPath = _manager.GetHomeFolderFor(_userName) + path;
+        return realPath;
     }
 
     private enum InputFrameType : short
