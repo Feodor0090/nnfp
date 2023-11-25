@@ -300,7 +300,7 @@ public class Session : IDisposable
             return null;
         }
 
-        if (path.Split('/', StringSplitOptions.RemoveEmptyEntries).Any(x => x.Equals("..") || x.Equals("~")))
+        if (path.Split('/').Any(x => x.Equals("..") || x.Equals("~") || x.Length == 0))
         {
             await SendAccessFailure(cancellationToken);
             return null;
