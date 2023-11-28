@@ -1,4 +1,7 @@
-﻿using System.Text;
+﻿using curse.NNSocket;
+using System.Net.Sockets;
+using System.Security.Cryptography;
+using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
@@ -19,13 +22,9 @@ namespace curse
         public MainWindow()
         {
             InitializeComponent();
+            MainFrame.Content=new MainPage();
         }
 
-        private void Login_Click(object sender, RoutedEventArgs e)
-        {
-            Window1 window1 = new Window1();
-            window1.Show();
-            this.Close();
-        }
+        
     }
 }
